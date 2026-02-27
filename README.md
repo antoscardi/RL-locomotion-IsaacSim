@@ -54,34 +54,6 @@ humanoid_rl_locomotion/
 └── README.md
 ```
 
-## Dependencies
-
-- **ROS 2 Humble**
-- Python 3.10+
-- PyTorch ≥ 2.0
-- NumPy
-
-### ROS 2 Message Packages
-
-- `nav_msgs` — `Odometry`
-- `sensor_msgs` — `JointState`
-- `geometry_msgs` — `Twist`
-- `grid_map_msgs` — `GridMap`
-
-## Build & Run
-
-```bash
-# Build
-cd <workspace_root>
-colcon build --packages-select humanoid_rl_locomotion
-
-# Source
-source install/setup.bash
-
-# Run
-ros2 run humanoid_rl_locomotion walk_rl_network
-```
-
 ## Training
 
 The policy was trained using [IsaacLab](https://github.com/isaac-sim/IsaacLab) with the Unitree G1 29-DoF configuration. The environment definition is in `model/walking_with_welder/params/velocity_env_cfg.py`. Key training features:
