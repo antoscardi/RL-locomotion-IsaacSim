@@ -3,9 +3,9 @@
 <package format="3">
   <name>humanoid_rl_locomotion</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="maintainer@example.com">mdiego</maintainer>
-  <license>TODO: License declaration</license>
+  <description>ROS 2 RL locomotion node for Unitree G1 humanoid (IsaacLab policy)</description>
+  <maintainer email="antoscardi@users.noreply.github.com">antoscardi</maintainer>
+  <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>

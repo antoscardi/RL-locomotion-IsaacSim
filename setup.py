@@ -13,14 +13,20 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='mdiego',
-    maintainer_email='maintainer@example.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer='antoscardi',
+    maintainer_email='antoscardi@users.noreply.github.com',
+    description=(
+        'ROS 2 RL locomotion node for '
+        'Unitree G1 humanoid (IsaacLab policy)'
+    ),
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'walk_rl_network = humanoid_rl_locomotion.walk_rl_network:main'
+            'walk_rl_network = '
+            'humanoid_rl_locomotion.walk_rl_network:main',
+            'rl_locomotion_isaac = '
+            'humanoid_rl_locomotion.rl_locomotion_isaac:main',
         ],
     },
 )
