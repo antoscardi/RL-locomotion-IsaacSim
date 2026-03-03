@@ -4,7 +4,6 @@
 Usage::
 
     python3 scripts/run_inference.py [-m MODEL] [-c CONFIG]
-                                     [--obs-size N] [--no-summary]
 """
 
 import argparse
@@ -60,14 +59,12 @@ class ActorCriticPolicy(torch.nn.Module):
 
 def load_policy_from_checkpoint(
         checkpoint_path: str,
-        observation_size: int = 395,
         num_actions: int = 12,
         hidden_layer_sizes: Optional[list] = None,
-) -> torch.nn.Module:
+) -> tuple:
     """Load an IsaacLab actor checkpoint into eval mode.
 
-    Supports state-dicts, nested checkpoint dicts, and
-    ``torch.jit`` archives.
+    Returns ``(policy, observation_size)``.
     """
     if hidden_layer_sizes is None:
         hidden_layer_sizes = [512, 256, 128]
@@ -79,7 +76,7 @@ def load_policy_from_checkpoint(
         jit_model = torch.jit.load(checkpoint_path, map_location='cpu')
         print(f'[load] Loaded JIT model from {checkpoint_path}')
         jit_model.eval()
-        return jit_model
+        return jit_model, None
     except Exception:
         pass
 
@@ -89,7 +86,7 @@ def load_policy_from_checkpoint(
 
     if isinstance(checkpoint, torch.nn.Module):
         checkpoint.eval()
-        return checkpoint
+        return checkpoint, None
 
     if isinstance(checkpoint, dict):
         if 'model_state_dict' in checkpoint:
@@ -109,6 +106,8 @@ def load_policy_from_checkpoint(
 
     if '0.weight' in actor_weights:
         observation_size = int(actor_weights['0.weight'].shape[1])
+    else:
+        observation_size = 395
 
     policy = ActorCriticPolicy(
         observation_size, num_actions, hidden_layer_sizes,
@@ -121,12 +120,12 @@ def load_policy_from_checkpoint(
 
     policy.eval()
     print(
-        f'[load] Actor network loaded — '
+        f'[load] Actor network loaded \u2014 '
         f'observation_size={observation_size}, '
         f'hidden={hidden_layer_sizes}, '
         f'num_actions={num_actions}'
     )
-    return policy
+    return policy, observation_size
 
 
 def load_deploy_config(config_path: str) -> dict:
@@ -168,10 +167,6 @@ def main():
     parser.add_argument('--config', '-c',
                         default='model/walking_with_welder/params/deploy.yaml',
                         help='Path to deploy.yaml config')
-    parser.add_argument('--obs-size', type=int, default=395,
-                        help='Observation vector size (default 395)')
-    parser.add_argument('--no-summary', action='store_true',
-                        help='Skip architecture summary table')
     args = parser.parse_args()
 
     model_path = os.path.abspath(args.model)
@@ -182,21 +177,18 @@ def main():
     print('=' * 70)
 
     print(f'\n[1] Loading policy from: {model_path}')
-    policy = load_policy_from_checkpoint(
-        model_path, observation_size=args.obs_size,
-    )
+    policy, obs_size = load_policy_from_checkpoint(model_path)
 
-    if not args.no_summary:
-        try:
-            from torchinfo import summary
-            print()
-            summary(policy, input_size=(1, args.obs_size),
-                    col_names=['output_size', 'num_params'],
-                    col_width=18, row_settings=['var_names'])
-        except ImportError:
-            total_params = sum(p.numel() for p in policy.parameters())
-            print(f'    Parameters: {total_params:,}  '
-                  f'(install torchinfo for full summary)')
+    try:
+        from torchinfo import summary
+        print()
+        summary(policy, input_size=(1, obs_size),
+                col_names=['output_size', 'num_params'],
+                col_width=18, row_settings=['var_names'])
+    except ImportError:
+        total_params = sum(p.numel() for p in policy.parameters())
+        print(f'    Parameters: {total_params:,}  '
+              f'(install torchinfo for full summary)')
 
     print(f'\n[2] Deploy config: {config_path}')
     deploy_config = load_deploy_config(config_path)
@@ -209,45 +201,40 @@ def main():
     action_offset = np.array(
         jpc.get(
             'offset',
-            [-0.1, -0.1, 0.0, 0.0, 0.0, 0.0,
-             0.3, 0.3, -0.2, -0.2, 0.0, 0.0],
+            [-0.1, -0.1, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3, -0.2, -0.2, 0.0, 0.0],
         ),
         dtype=np.float32,
     )
     print(f'    Scale:  {action_scale}')
     print(f'    Offset: {action_offset}')
 
-    zero_obs = np.zeros(args.obs_size, dtype=np.float32)
+    print('\n[3] Zero-input inference (per-joint scaled actions)')
+    zero_obs = np.zeros(obs_size, dtype=np.float32)
     zero_result = run_single_inference(
         policy, zero_obs, action_scale, action_offset)
-
-    synthetic_obs = build_synthetic_observation()
-    synthetic_result = run_single_inference(
-        policy, synthetic_obs, action_scale, action_offset)
-
-    print('\n[3] Inference results (scaled actions per joint)')
-    header = ('    {:>7}  {:>9}  {:>9}  {:>9}'.format(
-        'Joint', 'Zeros', 'Synthetic', 'Offset',
-    ))
-    separator = ('    {:>7}  {:>9}  {:>9}  {:>9}'.format(
-        '-----', '---------', '---------', '---------',
-    ))
+    header = '    {:>7}  {:>9}  {:>9}'.format('Joint', 'Scaled', 'Offset')
+    separator = '    {:>7}  {:>9}  {:>9}'.format(
+        '-----', '---------', '---------')
     print(header)
     print(separator)
     for j in range(len(action_offset)):
         z = zero_result['scaled_action'][j]
-        s = synthetic_result['scaled_action'][j]
         o = action_offset[j]
-        print(f'    {j:7d}  {z:+9.4f}  {s:+9.4f}  {o:+9.4f}')
-
-    deviations = np.abs(synthetic_result['scaled_action'] - action_offset)
+        print(f'    {j:7d}  {z:+9.4f}  {o:+9.4f}')
+    deviations = np.abs(zero_result['scaled_action'] - action_offset)
     bad = np.where(deviations > 1.0)[0]
     if bad.size:
-        print('\n[4] ⚠  Large deviations from offset:')
+        print(' Large deviations from offset:')
         for idx in bad:
-            print(f'    Joint {idx}: Δ={deviations[idx]:.4f}')
+            print(f'      Joint {idx}: Δ={deviations[idx]:.4f}')
     else:
-        print('\n[4] Action sanity check ✓')
+        print('    Sanity check ✓')
+
+    print('\n[4] Synthetic-input inference ([0,1,2,…,N-1])')
+    synthetic_obs = build_synthetic_observation(obs_size)
+    synthetic_result = run_single_inference(
+        policy, synthetic_obs, action_scale, action_offset)
+    print(f'    {synthetic_result["scaled_action"]}')
 
     print('\n' + '=' * 70)
     print(' All checks passed ✓')

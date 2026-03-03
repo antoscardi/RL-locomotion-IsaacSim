@@ -31,12 +31,22 @@ Total policy input: **395** (79 × 5 history steps)
 | Linear X (m/s) | −0.5 | 1.0 |
 | Linear Y (m/s) | −0.3 | 0.3 |
 | Angular Z (rad/s) | −0.2 | 0.2 |
-# Additional Nodes
+## Additional Nodes
 
 * **`rl_locomotion_isaac`** – loads a pretrained IsaacLab policy and deploys
 	it inside IsaacSim via the ROS2 bridge.  It listens on Isaac topics (for
 	example `/isaac/odom`, `/isaac/joint_states`) and
 	publishes joint commands back to the simulator.
+
+## Standalone Inference Test
+
+`scripts/run_inference.py` verifies the policy end-to-end **without ROS2 or IsaacSim**.
+It loads the checkpoint, prints the architecture (via `torchinfo`), reads action scaling from `deploy.yaml`, and runs forward passes with zero and sequential observations.
+
+```bash
+python3 scripts/run_inference.py            # defaults
+python3 scripts/run_inference.py --no-summary -m model/walking_with_welder.pt
+```
 
 ## Project Structure
 
@@ -44,8 +54,10 @@ Total policy input: **395** (79 × 5 history steps)
 humanoid_rl_locomotion/
 ├── humanoid_rl_locomotion/
 │   ├── __init__.py
-│   ├── walk_rl_network.py          # ROS 2 node (gezebo deployment)
+│   ├── walk_rl_network.py          # ROS 2 node (Gazebo deployment)
 │   └── rl_locomotion_isaac.py      # ROS 2 node (IsaacSim deployment)
+├── scripts/
+│   └── run_inference.py            # Standalone inference test
 ├── model/
 │   ├── walking_with_welder.pt       # Exported policy (JIT)
 │   └── walking_with_welder/
